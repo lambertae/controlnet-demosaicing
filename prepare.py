@@ -1,6 +1,7 @@
 # %%
 # change the flickr8k dataset to the format of the huggingface dataset
 # %%
+# wget ""
 import os
 def load_text(filename):
     # open the file as read only
@@ -51,17 +52,25 @@ def clean_description(desc_dict):
 descriptions = load_text(os.path.join(text_folder, "Flickr8k.token.txt"))
 desc_dict = load_descriptions(descriptions)
 clean_description(desc_dict)
+
+# %% 
+# sort desc_dict[a] by the length of the sentence
+for key, desc_list in desc_dict.items():
+    desc_list.sort(key=lambda x: len(x), reverse=True)
+print(desc_dict['1000268201_693b08cb0e'])
+
 # %%
 img_folder = "/data/scratch/dengm/controlnet/controlnet-demosaicing/flickr8k/Flicker8k_Dataset"
 import cv2 
 import matplotlib.pyplot as plt
 cnt = 0
-for name in train_imgs:
+for name in test_imgs:
     cnt += 1
-    if cnt == 5:
+    if cnt == 1:
         break
     prefix = name.split('.')[0]
     img = cv2.imread(os.path.join(img_folder, name))
+    
     plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     plt.show()
     print(desc_dict[prefix])
@@ -86,7 +95,18 @@ def pixelate(img):
     img = cv2.resize(img, (64, 64), interpolation=cv2.INTER_NEAREST)
     img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_NEAREST)
     return img
+file = train_imgs[0]
+# plot img with pixelate(resize(img))
+fig, ax = plt.subplots(1, 2)
+img1 = load_image(file)
+ax[0].imshow(resize(img1))
+ax[1].imshow(pixelate(resize(img1)))
+caption = desc_dict[file.split('.')[0]][0]
+# show caption in plt
+fig.text(0.5, 0.05, caption, ha='center')
+plt.show()
 
+# %%
 img1 = load_image(train_imgs[4])
 print(img1.shape)
 
@@ -108,7 +128,34 @@ def dataset_entry(filename):
     return {"image": PIL.Image.fromarray(img), "caption" : desc_dict[prefix][0], "condition": PIL.Image.fromarray(pix)}
 
 from datasets import Dataset
-image_list = Dataset.from_dict({"image": train_imgs})
-train_dataset = image_list.map(lambda x: dataset_entry(x["image"]), num_proc=16)
-# save
-train_dataset.save_to_disk("/data/scratch/dengm/controlnet/controlnet-demosaicing/flickr8k/train_dataset")
+train_dataset = Dataset.from_dict({"img": train_imgs}).map(lambda x: dataset_entry(x["img"]), num_proc=16)
+split_datasets = train_dataset.train_test_split(test_size=0.1)
+print(split_datasets.column_names)
+split_datasets.save_to_disk("/data/scratch/dengm/controlnet/controlnet-demosaicing/flickr8k/new_dataset")
+# %%
+!huggingface-cli login
+# %%
+
+train_dataset.push_to_hub("flickr8k")
+
+# %%
+val_img = pixelate(resize(load_image(dev_imgs[0])))
+plt.imshow(val_img)
+plt.show()
+val_cap = desc_dict[dev_imgs[0].split('.')[0]][0]
+# save val image
+import PIL
+im = PIL.Image.fromarray(val_img)
+im.save("/data/scratch/dengm/controlnet/controlnet-demosaicing/flickr8k/val_img.png")
+# %%
+
+train_img = pixelate(resize(load_image(train_imgs[0])))
+plt.imshow(train_img)
+plt.show()
+train_cap = desc_dict[train_imgs[0].split('.')[0]][0]
+# save val image
+import PIL
+im = PIL.Image.fromarray(train_img)
+im.save("/data/scratch/dengm/controlnet/controlnet-demosaicing/flickr8k/train_img.png")
+print(train_cap)
+# %%
